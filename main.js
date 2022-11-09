@@ -1,14 +1,18 @@
 'use strict';
 
-let gl;                         // The webgl context.
-let surface;                    // A surface model
-let shProgram;                  // A shader program
-let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
+let gl; // The webgl context.
+let surface; // A surface model
+let shProgram; // A shader program
+let spaceball; // A SimpleRotator object that lets the user rotate the view by mouse.
 
-function deg2rad(angle) {
-    return angle * Math.PI / 180;
-}
 
+const R = 1;
+const a = 1;
+const n = 1;
+
+const x = (r, B) => r * Math.cos(B);
+const y = (r, B) => r * Math.sin(B);
+const z = (r) => a * Math.cos((n * Math.PI * r) / R);
 
 // Constructor
 function Model(name) {
@@ -21,7 +25,7 @@ function Model(name) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
 
-        this.count = vertices.length/3;
+        this.count = vertices.length / 3;
     }
 
     this.Draw = function() {
@@ -29,7 +33,7 @@ function Model(name) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
-   
+
         gl.drawArrays(gl.LINE_STRIP, 0, this.count);
     }
 }
@@ -58,57 +62,68 @@ function ShaderProgram(name, program) {
  * (Note that the use of the above drawPrimitive function is not an efficient
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
-function draw() { 
-    gl.clearColor(0,0,0,1);
+function draw() {
+    gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    
+
+    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+
     /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI/8, 1, 8, 12); 
-    
+    let projection = m4.perspective(Math.PI / 2, aspect, 1, 2000);
+
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
 
-    let rotateToPointZero = m4.axisRotation([0.707,0.707,0], 0.7);
-    let translateToPointZero = m4.translation(0,0,-10);
+    let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
+    let translateToPointZero = m4.translation(0, 0, -10);
 
-    let matAccum0 = m4.multiply(rotateToPointZero, modelView );
-    let matAccum1 = m4.multiply(translateToPointZero, matAccum0 );
-        
+    let matAccum0 = m4.multiply(rotateToPointZero, modelView);
+    let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
+
     /* Multiply the projection matrix times the modelview matrix to give the
        combined transformation matrix, and send that to the shader program. */
-    let modelViewProjection = m4.multiply(projection, matAccum1 );
+    let modelViewProjection = m4.multiply(projection, matAccum1);
 
-    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection );
-    
+    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
+
     /* Draw the six faces of a cube, with different colors. */
-    gl.uniform4fv(shProgram.iColor, [1,1,0,1] );
+    gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
 
     surface.Draw();
 }
 
-function CreateSurfaceData()
-{
-    let vertexList = [];
+function CreateSurfaceData() {
 
-    for (let i=0; i<360; i+=5) {
-        vertexList.push( Math.sin(deg2rad(i)), 1, Math.cos(deg2rad(i)) );
-        vertexList.push( Math.sin(deg2rad(i)), 0, Math.cos(deg2rad(i)) );
+    let vertexCircles = []
+
+    for (let r = 0; r <= 7; r += Math.PI / 8) {
+        let vertexCircle = []
+        for (let B = 0; B <= 2 * Math.PI; B += Math.PI / 50) {
+            vertexCircle.push([x(r, B), y(r, B), z(r)])
+        }
+        vertexCircles.push(vertexCircle)
     }
 
-    return vertexList;
+    let vertixLines = vertexCircles[0].map((col, i) => vertexCircles.map(row => row[i]));
+
+    vertixLines = vertixLines.map(vertexLine => [...vertexLine, ...vertexLine.slice().reverse()])
+    vertexCircles = vertexCircles.map(vertexCircle => [...vertexCircle, ...vertexCircle.slice().reverse()])
+
+    return [...vertixLines.flat(Infinity), ...vertexCircles.flat(Infinity)]
 }
 
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
-    let prog = createProgram( gl, vertexShaderSource, fragmentShaderSource );
+    let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+    gl.useProgram(prog);
 
     shProgram = new ShaderProgram('Basic', prog);
     shProgram.Use();
 
-    shProgram.iAttribVertex              = gl.getAttribLocation(prog, "vertex");
+    shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
-    shProgram.iColor                     = gl.getUniformLocation(prog, "color");
+    shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData());
@@ -126,24 +141,24 @@ function initGL() {
  * source code for the vertex shader and for the fragment shader.
  */
 function createProgram(gl, vShader, fShader) {
-    let vsh = gl.createShader( gl.VERTEX_SHADER );
-    gl.shaderSource(vsh,vShader);
+    let vsh = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vsh, vShader);
     gl.compileShader(vsh);
-    if ( ! gl.getShaderParameter(vsh, gl.COMPILE_STATUS) ) {
+    if (!gl.getShaderParameter(vsh, gl.COMPILE_STATUS)) {
         throw new Error("Error in vertex shader:  " + gl.getShaderInfoLog(vsh));
-     }
-    let fsh = gl.createShader( gl.FRAGMENT_SHADER );
+    }
+    let fsh = gl.createShader(gl.FRAGMENT_SHADER);
     gl.shaderSource(fsh, fShader);
     gl.compileShader(fsh);
-    if ( ! gl.getShaderParameter(fsh, gl.COMPILE_STATUS) ) {
-       throw new Error("Error in fragment shader:  " + gl.getShaderInfoLog(fsh));
+    if (!gl.getShaderParameter(fsh, gl.COMPILE_STATUS)) {
+        throw new Error("Error in fragment shader:  " + gl.getShaderInfoLog(fsh));
     }
     let prog = gl.createProgram();
-    gl.attachShader(prog,vsh);
+    gl.attachShader(prog, vsh);
     gl.attachShader(prog, fsh);
     gl.linkProgram(prog);
-    if ( ! gl.getProgramParameter( prog, gl.LINK_STATUS) ) {
-       throw new Error("Link error in program:  " + gl.getProgramInfoLog(prog));
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        throw new Error("Link error in program:  " + gl.getProgramInfoLog(prog));
     }
     return prog;
 }
@@ -157,19 +172,17 @@ function init() {
     try {
         canvas = document.getElementById("webglcanvas");
         gl = canvas.getContext("webgl");
-        if ( ! gl ) {
+        if (!gl) {
             throw "Browser does not support WebGL";
         }
-    }
-    catch (e) {
+    } catch (e) {
         document.getElementById("canvas-holder").innerHTML =
             "<p>Sorry, could not get a WebGL graphics context.</p>";
         return;
     }
     try {
-        initGL();  // initialize the WebGL graphics context
-    }
-    catch (e) {
+        initGL(); // initialize the WebGL graphics context
+    } catch (e) {
         document.getElementById("canvas-holder").innerHTML =
             "<p>Sorry, could not initialize the WebGL graphics context: " + e + "</p>";
         return;
