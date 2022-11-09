@@ -2,4 +2,4 @@
 
 Project that accompanies VGGI credit module.
 
-Visit vggi-kpi.blogspot.com for more information
+Lab 1 by Anatoliy Probotiuk, TR-23mp
