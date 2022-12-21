@@ -5,6 +5,7 @@ let surface; // A surface model
 let shProgram; // A shader program
 let spaceball; // A SimpleRotator object that lets the user rotate the view by mouse.
 
+let handlePosition = 0.0;
 
 const R = 1;
 const a = 1;
@@ -31,8 +32,11 @@ function Model(name) {
     this.Draw = function() {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, true, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
+
+        gl.vertexAttribPointer(shProgram.iNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iNormal);
 
         gl.drawArrays(gl.LINE_STRIP, 0, this.count);
     }
@@ -41,7 +45,6 @@ function Model(name) {
 
 // Constructor
 function ShaderProgram(name, program) {
-
     this.name = name;
     this.prog = program;
 
@@ -52,9 +55,21 @@ function ShaderProgram(name, program) {
     // Location of the uniform matrix representing the combined transformation.
     this.iModelViewProjectionMatrix = -1;
 
+    this.iNormal = -1;
+    this.iNormalMatrix = -1;
+
+    this.iAmbientColor = -1;
+    this.iDiffuseColor = -1;
+    this.iSpecularColor = -1;
+
+    this.iShininess = -1;
+
+    this.iLightPosition = -1;
+    this.iLightVec = -1;
+
     this.Use = function() {
         gl.useProgram(this.prog);
-    }
+    };
 }
 
 
@@ -74,18 +89,32 @@ function draw() {
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
 
-    let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
+    let rotateToPointZero = m4.axisRotation([0, 0, 1], 0.7);
     let translateToPointZero = m4.translation(0, 0, -10);
 
     let matAccum0 = m4.multiply(rotateToPointZero, modelView);
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
 
+    const modelViewInverse = m4.inverse(matAccum1, new Float32Array(16));
+    const normalMatrix = m4.transpose(modelViewInverse, new Float32Array(16));
+
     /* Multiply the projection matrix times the modelview matrix to give the
-       combined transformation matrix, and send that to the shader program. */
+        combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
+    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normalMatrix);
 
+    gl.uniform3fv(shProgram.iLightPosition, lightCoordinates());
+    gl.uniform3fv(shProgram.iLightDirection, [1, 0, 0]);
+
+    gl.uniform3fv(shProgram.iLightVec, new Float32Array(3));
+
+    gl.uniform1f(shProgram.iShininess, 1.0);
+
+    gl.uniform3fv(shProgram.iAmbientColor, [0.6, 0, 0.9]);
+    gl.uniform3fv(shProgram.iDiffuseColor, [1.6, 1.0, 0.5]);
+    gl.uniform3fv(shProgram.iSpecularColor, [1.0, 1.0, 2.0]);
     /* Draw the six faces of a cube, with different colors. */
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
 
@@ -98,7 +127,7 @@ function CreateSurfaceData() {
 
     for (let r = 0; r <= 7; r += Math.PI / 8) {
         let vertexCircle = []
-        for (let B = 0; B <= 2 * Math.PI; B += Math.PI / 50) {
+        for (let B = 0; B <= 2 * Math.PI; B += Math.PI / 700) {
             vertexCircle.push([x(r, B), y(r, B), z(r)])
         }
         vertexCircles.push(vertexCircle)
@@ -116,16 +145,30 @@ function CreateSurfaceData() {
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
     let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
-    gl.useProgram(prog);
 
-    shProgram = new ShaderProgram('Basic', prog);
+    shProgram = new ShaderProgram("Basic", prog);
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
+    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(
+        prog,
+        "ModelViewProjectionMatrix"
+    );
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
-    surface = new Model('Surface');
+    shProgram.iNormal = gl.getAttribLocation(prog, "normal");
+    shProgram.iNormalMatrix = gl.getUniformLocation(prog, "normalMatrix");
+
+    shProgram.iAmbientColor = gl.getUniformLocation(prog, "ambientColor");
+    shProgram.iDiffuseColor = gl.getUniformLocation(prog, "diffuseColor");
+    shProgram.iSpecularColor = gl.getUniformLocation(prog, "specularColor");
+
+    shProgram.iShininess = gl.getUniformLocation(prog, "shininess");
+
+    shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
+    shProgram.iLightVec = gl.getUniformLocation(prog, "lightVec");
+
+    surface = new Model("Surface");
     surface.BufferData(CreateSurfaceData());
 
     gl.enable(gl.DEPTH_TEST);
@@ -192,3 +235,36 @@ function init() {
 
     draw();
 }
+
+window.addEventListener("keydown", function(event) {
+    switch (event.key) {
+        case "ArrowLeft":
+            left();
+            break;
+        case "ArrowRight":
+            right();
+            break;
+        default:
+            return;
+    }
+});
+
+const left = () => {
+    handlePosition -= 0.07;
+    reDraw();
+};
+
+const right = () => {
+    handlePosition += 0.07;
+    reDraw();
+};
+
+const lightCoordinates = () => {
+    let coord = Math.sin(handlePosition) * 1.2;
+    return [coord, -2, coord * coord];
+};
+
+const reDraw = () => {
+    surface.BufferData(CreateSurfaceData());
+    draw();
+};
