@@ -8,7 +8,9 @@ const fragmentShaderSource = `
 #define GLSLIFY 1
 
 varying vec4 color;
+varying vec2 v_texCoord; 
+uniform sampler2D tmu;
 
 void main() {
-    gl_FragColor = color;
+    gl_FragColor = texture2D(tmu,v_texCoord);
 }`;

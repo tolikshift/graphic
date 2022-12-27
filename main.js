@@ -11,6 +11,8 @@ const R = 1;
 const a = 1;
 const n = 1;
 
+const resolution = 1000;
+
 const x = (r, B) => r * Math.cos(B);
 const y = (r, B) => r * Math.sin(B);
 const z = (r) => a * Math.cos((n * Math.PI * r) / R);
@@ -19,24 +21,30 @@ const z = (r) => a * Math.cos((n * Math.PI * r) / R);
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
+    this.iTexCoordBuffer = gl.createBuffer();
     this.count = 0;
 
-    this.BufferData = function(vertices) {
-
+    this.BufferData = function(vertices, texCoords) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iTexCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
 
         this.count = vertices.length / 3;
     }
 
     this.Draw = function() {
-
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, true, 0, 0);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
 
         gl.vertexAttribPointer(shProgram.iNormal, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iNormal);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iTexCoordBuffer);
+        gl.vertexAttribPointer(shProgram.iTexCoord, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iTexCoord);
 
         gl.drawArrays(gl.LINE_STRIP, 0, this.count);
     }
@@ -67,16 +75,14 @@ function ShaderProgram(name, program) {
     this.iLightPosition = -1;
     this.iLightVec = -1;
 
+    this.iTexCoord = -1;
+
     this.Use = function() {
         gl.useProgram(this.prog);
     };
 }
 
 
-/* Draws a colored cube, along with a set of coordinate axes.
- * (Note that the use of the above drawPrimitive function is not an efficient
- * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
- */
 function draw() {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -98,8 +104,6 @@ function draw() {
     const modelViewInverse = m4.inverse(matAccum1, new Float32Array(16));
     const normalMatrix = m4.transpose(modelViewInverse, new Float32Array(16));
 
-    /* Multiply the projection matrix times the modelview matrix to give the
-        combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
@@ -124,25 +128,63 @@ function draw() {
 function CreateSurfaceData() {
 
     let vertexCircles = []
+    let texCoordsCircles = []
 
     for (let r = 0; r <= 7; r += Math.PI / 8) {
         let vertexCircle = []
+        let texCoordsCircle = []
         for (let B = 0; B <= 2 * Math.PI; B += Math.PI / 700) {
             vertexCircle.push([x(r, B), y(r, B), z(r)])
+
+            const u = r / 7;
+            const v = B / 2 * Math.PI;
+            texCoordsCircle.push([u, v]);
         }
         vertexCircles.push(vertexCircle)
+        texCoordsCircles.push(texCoordsCircle)
     }
 
-    let vertixLines = vertexCircles[0].map((col, i) => vertexCircles.map(row => row[i]));
+    let vertexLines = vertexCircles[0].map((col, i) => vertexCircles.map(row => row[i]));
+    let texCoordsLines = texCoordsCircles[0].map((col, i) => texCoordsCircles.map(row => row[i]));
 
-    vertixLines = vertixLines.map(vertexLine => [...vertexLine, ...vertexLine.slice().reverse()])
+
+    vertexLines = vertexLines.map(vertexLine => [...vertexLine, ...vertexLine.slice().reverse()])
     vertexCircles = vertexCircles.map(vertexCircle => [...vertexCircle, ...vertexCircle.slice().reverse()])
 
-    return [...vertixLines.flat(Infinity), ...vertexCircles.flat(Infinity)]
+    texCoordsLines = texCoordsLines.map(texCoordsLine => [...texCoordsLine, ...texCoordsLine.slice().reverse()])
+    texCoordsCircles = texCoordsCircles.map(texCoordsCircle => [...texCoordsCircle, ...texCoordsCircle.slice().reverse()])
+
+    const vertex = [...vertexLines.flat(Infinity), ...vertexCircles.flat(Infinity)]
+    const texCoords = [...texCoordsLines.flat(Infinity), ...texCoordsCircles.flat(Infinity)]
+
+    return [
+        vertex, texCoords
+    ]
 }
 
+function createTexture() {
+    let texture = gl.createTexture();
 
-/* Initialize the WebGL context. Called from init() */
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array([255, 255, 255, 255]));
+
+    let img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = 'https://upload.wikimedia.org/wikipedia/commons/4/41/Brickwall_texture.jpg';
+    img.addEventListener('load', function() {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        draw();
+    });
+}
+
 function initGL() {
     let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
 
@@ -150,10 +192,7 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(
-        prog,
-        "ModelViewProjectionMatrix"
-    );
+    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     shProgram.iNormal = gl.getAttribLocation(prog, "normal");
@@ -168,21 +207,17 @@ function initGL() {
     shProgram.iLightPosition = gl.getUniformLocation(prog, "lightPosition");
     shProgram.iLightVec = gl.getUniformLocation(prog, "lightVec");
 
+    shProgram.iTexCoord = gl.getAttribLocation(prog, "iTexCoord");
+
     surface = new Model("Surface");
-    surface.BufferData(CreateSurfaceData());
+
+    const surfaceData = CreateSurfaceData();
+    surface.BufferData(surfaceData[0], surfaceData[1]);
 
     gl.enable(gl.DEPTH_TEST);
 }
 
 
-/* Creates a program for use in the WebGL context gl, and returns the
- * identifier for that program.  If an error occurs while compiling or
- * linking the program, an exception of type Error is thrown.  The error
- * string contains the compilation or linking error.  If no error occurs,
- * the program identifier is the return value of the function.
- * The second and third parameters are strings that contain the
- * source code for the vertex shader and for the fragment shader.
- */
 function createProgram(gl, vShader, fShader) {
     let vsh = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vsh, vShader);
@@ -207,9 +242,6 @@ function createProgram(gl, vShader, fShader) {
 }
 
 
-/**
- * initialization function that will be called when the page has loaded
- */
 function init() {
     let canvas;
     try {
@@ -233,7 +265,8 @@ function init() {
 
     spaceball = new TrackballRotator(canvas, draw, 0);
 
-    draw();
+    // draw();
+    createTexture();
 }
 
 window.addEventListener("keydown", function(event) {
@@ -265,6 +298,8 @@ const lightCoordinates = () => {
 };
 
 const reDraw = () => {
-    surface.BufferData(CreateSurfaceData());
+
+    const surfaceData = CreateSurfaceData();
+    surface.BufferData(surfaceData[0], surfaceData[1]);
     draw();
 };
