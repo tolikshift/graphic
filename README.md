@@ -2,4 +2,4 @@
 
 Project that accompanies VGGI credit module.
 
-Lab 2 by Anatoliy Probotiuk, TR-23mp, 17 variant
+Calculation and graphics work (Operations on texture coordinates) by Anatoliy Probotiuk, TR-23mp, 17 variant
