@@ -3,7 +3,6 @@ const vertexShaderSource = `
 
 attribute vec3 vertex;
 attribute vec3 normal;
-attribute vec2 iTexCoord;
 uniform mat4 normalMatrix;
 uniform mat4 ModelViewProjectionMatrix;
 
@@ -16,6 +15,11 @@ uniform vec3 lightPosition;
 
 varying vec4 color;
 
+attribute vec4 iTexposition;
+attribute vec2 iTexCoord;
+uniform mat4 u_modelViewProjectionMatrix;
+uniform float u_scale;
+uniform float u_offset;
 varying vec2 v_texCoord;
 
 void main() {
@@ -40,5 +44,6 @@ void main() {
     vec3 specular = specularLight * specularColor;
     color = vec4(diffuse + ambient + specular, 1.0);
 
-    v_texCoord = iTexCoord;
+    gl_Position = u_modelViewProjectionMatrix * vec4(vertex, 1.0);
+    v_texCoord = (iTexCoord * u_scale) + u_offset;
 }`;

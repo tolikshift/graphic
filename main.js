@@ -17,6 +17,9 @@ const x = (r, B) => r * Math.cos(B);
 const y = (r, B) => r * Math.sin(B);
 const z = (r) => a * Math.cos((n * Math.PI * r) / R);
 
+let scale = 1.0
+let offset = 0.0
+
 // Constructor
 function Model(name) {
     this.name = name;
@@ -76,6 +79,9 @@ function ShaderProgram(name, program) {
     this.iLightVec = -1;
 
     this.iTexCoord = -1;
+    this.iScaleLocation = -1;
+    this.iOffsetLocation = -1;
+    this.uModelViewProjectionMatrix = -1;
 
     this.Use = function() {
         gl.useProgram(this.prog);
@@ -122,6 +128,10 @@ function draw() {
     /* Draw the six faces of a cube, with different colors. */
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
 
+    gl.uniform1f(shProgram.iScaleLocation, scale);
+    gl.uniform1f(shProgram.iOffsetLocation, offset);
+    gl.uniformMatrix4fv(shProgram.uModelViewProjectionMatrix, false, modelViewProjection);
+
     surface.Draw();
 }
 
@@ -163,6 +173,7 @@ function CreateSurfaceData() {
 }
 
 function createTexture() {
+
     let texture = gl.createTexture();
 
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -184,6 +195,27 @@ function createTexture() {
         draw();
     });
 }
+
+function keyDown(event) {
+    if (event.keyCode == 65) { // A
+        // Decrease the texture offset along the u parameter
+        offset -= 0.1;
+    } else if (event.keyCode == 68) { // D
+        // Increase the texture offset along the u parameter
+        offset += 0.1;
+    } else if (event.keyCode == 87) { // W
+        // Decrease the texture scaling factor
+        scale -= 0.1;
+    } else if (event.keyCode == 83) { // S
+        // Increase the texture scaling factor
+        scale += 0.1;
+    }
+
+    createTexture()
+}
+
+document.addEventListener('keydown', keyDown);
+
 
 function initGL() {
     let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
@@ -208,6 +240,9 @@ function initGL() {
     shProgram.iLightVec = gl.getUniformLocation(prog, "lightVec");
 
     shProgram.iTexCoord = gl.getAttribLocation(prog, "iTexCoord");
+    shProgram.iScaleLocation = gl.getUniformLocation(prog, 'u_scale');
+    shProgram.iOffsetLocation = gl.getUniformLocation(prog, 'u_offset');
+    shProgram.uModelViewProjectionMatrix = gl.getUniformLocation(prog, "u_modelViewProjectionMatrix");
 
     surface = new Model("Surface");
 
